@@ -11,6 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.example.tictactoe"
         minSdk = 24
+        //noinspection OldTargetApi
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -42,6 +43,7 @@ android {
 dependencies {
     val nav_version = "2.8.4"
 
+    //noinspection UseTomlInstead
     implementation("androidx.navigation:navigation-compose:$nav_version")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

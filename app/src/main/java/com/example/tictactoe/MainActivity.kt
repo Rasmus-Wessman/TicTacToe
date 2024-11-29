@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.example.tictactoe
 
 import android.os.Bundle
@@ -12,34 +14,43 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.tictactoe.ui.theme.TicTacToeTheme
+import com.google.firebase.Firebase
+import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+data class Player(
+    val id: String,
+    val name: String
+)
 
 data class TicTacToeGame(
     var id: Int,
@@ -66,6 +77,7 @@ class MainActivity : ComponentActivity() {
 fun TicTacToeApp(){
     val navController = rememberNavController()
     val ticTacToeGame = remember { mutableStateOf<TicTacToeGame?>(null) }
+
     ticTacToeGame.value = ticTacToeGame.value ?: TicTacToeGame(
         id = 1,
         playerTurn = 1,
@@ -77,6 +89,7 @@ fun TicTacToeApp(){
 
     NavHost(navController = navController, startDestination = "main menu") {
         composable("main menu") { MainMenu(navController) }
+        composable("create account") { CreateAccountScreen(navController) }
         composable("game") { GameScreen(navController, ticTacToeGame) }
         composable("winner") { WinnerScreen(navController, ticTacToeGame) }
     }
@@ -84,7 +97,88 @@ fun TicTacToeApp(){
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun CreateAccountScreen(navController: NavController) {
+    val db = Firebase.firestore
+    val playerName = remember { mutableStateOf("") }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Main Menu") },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                )
+            )
+        }
+    ){ padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+        ) {
+            Text(
+                text = "Create Account",
+                style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            TextField(
+                value = playerName.value,
+                onValueChange = { playerName.value = it },
+                label = { Text("Player Name") }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    if(playerName.value.isNotEmpty()){
+                        //add new player to database
+                        val player = Player(id = db.collection("Players").document().id, name = playerName.value)
+                        db.collection("Players").document(player.id).set(player)
+                        navController.navigate("main menu")
+                    }
+                },
+                modifier = Modifier.width(200.dp)
+            ) {
+                Text("Create Account")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun MainMenu(navController: NavController) {
+    val db = Firebase.firestore
+    val gameList = MutableStateFlow<List<TicTacToeGame>>(emptyList())
+    val playerList = MutableStateFlow<List<Player>>(emptyList())
+
+    db.collection("Lobbys")
+        .addSnapshotListener { value, error ->
+            if (error != null) {
+                return@addSnapshotListener
+            }
+            if (value != null) {
+                gameList.value = value.toObjects(TicTacToeGame::class.java)
+            }
+        }
+
+    db.collection("Players")
+        .addSnapshotListener { value, error ->
+            if (error != null) {
+                return@addSnapshotListener
+            }
+            if (value != null) {
+                playerList.value = value.toObjects(Player::class.java)
+            }
+        }
+
+    val games = gameList.asStateFlow().collectAsStateWithLifecycle()
+    val players = playerList.asStateFlow().collectAsStateWithLifecycle()
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -97,24 +191,54 @@ fun MainMenu(navController: NavController) {
             )
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
-            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "Welcome to Tic Tac Toe!",
-                style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { navController.navigate("game") },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Start Game")
+//            Text(
+//                text = "Welcome to Tic Tac Toe!",
+//                style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+//                modifier = Modifier.padding(bottom = 16.dp)
+//            )
+//            Spacer(modifier = Modifier.height(16.dp))
+//            Button(
+//                onClick = { navController.navigate("game") },
+//                modifier = Modifier.fillMaxWidth()
+//            ) {
+//                Text("Start Game")
+//            }
+            item{
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Create Account",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { navController.navigate("create account") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Create Account")
+                }
+            }
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Games",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            items(games.value){ game ->
+                ListItem(
+                    headlineContent = { Text(game.player1 + " vs " + game.player2) }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
             }
         }
     }
@@ -142,7 +266,7 @@ fun GameScreen(navController: NavHostController, ticTacToeGame: MutableState<Tic
                 )
             )
         }
-    ){ padding ->
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -192,7 +316,6 @@ fun GameScreen(navController: NavHostController, ticTacToeGame: MutableState<Tic
                 }
             }) { Text("Make Move") }
         }
-
     }
 }
 
@@ -200,6 +323,9 @@ fun GameScreen(navController: NavHostController, ticTacToeGame: MutableState<Tic
 @Composable
 fun WinnerScreen(navController: NavHostController, ticTacToeGame: MutableState<TicTacToeGame?>){
     val winner = ticTacToeGame.value?.winner
+    navigateAfterDelay(2000) {
+        navController.navigate("main menu")
+    }
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -225,12 +351,18 @@ fun WinnerScreen(navController: NavHostController, ticTacToeGame: MutableState<T
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
             Text(
-                text = "Player $winner won!",
+                text = if (winner == 1) "Player 1 wins!" else if (winner == 2) "Player 2 wins!" else "It's a draw!",
                 style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
         }
     }
+}
+
+fun navigateAfterDelay(delay: Int, function: () -> Unit) {
+    android.os.Handler().postDelayed({
+        function()
+    }, delay.toLong())
 }
 
 fun checkWin(board: List<List<Int>>): Int {
@@ -248,7 +380,14 @@ fun checkWin(board: List<List<Int>>): Int {
     if (board[0][2] == board[1][1] && board[1][1] == board[2][0] && board[0][2] != 0) {
         return board[0][2]
     }
-    return 0
+    for (i in 0..2) {
+        for (j in 0..2) {
+            if (board[i][j] == 0) {
+                return 0
+            }
+        }
+    }
+    return 3
 }
 
 @Preview(showBackground = true)

@@ -1,3 +1,5 @@
+import org.gradle.kotlin.dsl.libs
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -10,7 +12,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "test.rve.rw.tictactoe.project"
+        applicationId = "com.example.tictactoe"
         minSdk = 24
         //noinspection OldTargetApi
         targetSdk = 34
@@ -39,6 +41,7 @@ android {
     buildFeatures {
         compose = true
     }
+    buildToolsVersion = "35.0.0"
 }
 
 dependencies {
@@ -46,8 +49,11 @@ dependencies {
 
     //noinspection UseTomlInstead
     implementation("androidx.navigation:navigation-compose:$nav_version")
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.firestore)
+    //noinspection BomWithoutPlatform
+    implementation(libs.play.services.location)
+    implementation(libs.firebase.bom)
+    implementation(libs.google.firebase.analytics)
+    implementation(libs.google.firebase.firestore)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

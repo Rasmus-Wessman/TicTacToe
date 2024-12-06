@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "1065624105533",
-    "project_id": "tictactoe-bdd45",
-    "storage_bucket": "tictactoe-bdd45.firebasestorage.app"
+    "project_number": "554011686889",
+    "project_id": "android-studio-tictactoe-game",
+    "storage_bucket": "android-studio-tictactoe-game.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1065624105533:android:0f5f718fdd21f53f083054",
+        "mobilesdk_app_id": "1:554011686889:android:317f86a8a3f97d342dfd78",
         "android_client_info": {
-          "package_name": "test.rve.rw.tictactoe.project"
+          "package_name": "com.example.tictactoe"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCfKPJ3iouVw_yicWGeW0ZM07cpnTzO-XI"
+          "current_key": "AIzaSyDVEAmos14ahHWlO4X6zHSsLUpVfpEEeGc"
         }
       ],
       "services": {

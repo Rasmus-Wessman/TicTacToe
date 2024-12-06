@@ -3,6 +3,7 @@
 package com.example.tictactoe
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,8 +29,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -44,21 +45,22 @@ import androidx.navigation.compose.rememberNavController
 import com.example.tictactoe.ui.theme.TicTacToeTheme
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
+import com.google.firebase.firestore.toObjects
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class Player(
-    val id: String,
-    val name: String
+    val id: String = "",
+    val name: String = ""
 )
 
 data class TicTacToeGame(
-    var id: Int,
-    var playerTurn: Int,
-    var player1: String,
-    var player2: String,
-    val board: MutableList<MutableList<Int>>,
-    var winner: Int
+    var board: List<Int> = emptyList(),
+    var id: String = "",
+    var player1: String = "",
+    var player2: String = "",
+    var playerTurn: Int = 1,
+    var winner: Int = 0
 )
 
 class MainActivity : ComponentActivity() {
@@ -76,30 +78,22 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TicTacToeApp(){
     val navController = rememberNavController()
-    val ticTacToeGame = remember { mutableStateOf<TicTacToeGame?>(null) }
+    val player = remember { mutableStateOf<Player?>(null) }
+    val game = remember { mutableStateOf<TicTacToeGame?>(null) }
 
-    ticTacToeGame.value = ticTacToeGame.value ?: TicTacToeGame(
-        id = 1,
-        playerTurn = 1,
-        player1 = "Player 1",
-        player2 = "Player 2",
-        board = List(3) { MutableList(3) { 0 } }.toMutableList(),
-        winner = 0
-    )
 
     NavHost(navController = navController, startDestination = "main menu") {
-        composable("main menu") { MainMenu(navController) }
-        composable("create account") { CreateAccountScreen(navController) }
-        composable("game") { GameScreen(navController, ticTacToeGame) }
-        composable("winner") { WinnerScreen(navController, ticTacToeGame) }
+        composable("main menu") { MainMenu(navController, player, game) }
+        composable("create account") { CreateAccountScreen(navController, player) }
+        composable("game") { GameScreen(navController, game, player) }
+        composable("winner") { WinnerScreen(navController, game, player) }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateAccountScreen(navController: NavController) {
+fun CreateAccountScreen(navController: NavController, player: MutableState<Player?>) {
     val db = Firebase.firestore
-    val playerName = remember { mutableStateOf("") }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -109,7 +103,12 @@ fun CreateAccountScreen(navController: NavController) {
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
                     containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                )
+                ),
+                actions = {
+                    IconButton(onClick = { navController.navigate("main menu") }) {
+                        Icon(Icons.Default.Close, contentDescription = "Back")
+                    }
+                }
             )
         }
     ){ padding ->
@@ -127,18 +126,24 @@ fun CreateAccountScreen(navController: NavController) {
             )
             Spacer(modifier = Modifier.height(16.dp))
             TextField(
-                value = playerName.value,
-                onValueChange = { playerName.value = it },
-                label = { Text("Player Name") }
+                value = player.value?.name ?: "",
+                onValueChange = { player.value = player.value?.copy(name = it) ?: Player("", it) },
+                label = { Text("Name") }
             )
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = {
-                    if(playerName.value.isNotEmpty()){
-                        //add new player to database
-                        val player = Player(id = db.collection("Players").document().id, name = playerName.value)
-                        db.collection("Players").document(player.id).set(player)
-                        navController.navigate("main menu")
+                    player.value?.name?.let {
+                        if(it.isNotEmpty()){
+                            val name = it.trim()
+                            db.collection("players").whereEqualTo("name", it).get().addOnSuccessListener {
+                                if(it.isEmpty){
+                                    db.collection("players").add(Player(id = db.collection("players").document().id, name = name))
+                                    navController.navigate("main menu")
+                                }
+                            }
+
+                        }
                     }
                 },
                 modifier = Modifier.width(200.dp)
@@ -151,28 +156,29 @@ fun CreateAccountScreen(navController: NavController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainMenu(navController: NavController) {
+fun MainMenu(navController: NavController, player: MutableState<Player?>, game: MutableState<TicTacToeGame?>) {
     val db = Firebase.firestore
     val gameList = MutableStateFlow<List<TicTacToeGame>>(emptyList())
     val playerList = MutableStateFlow<List<Player>>(emptyList())
 
-    db.collection("Lobbys")
+    db.collection("games")
         .addSnapshotListener { value, error ->
             if (error != null) {
                 return@addSnapshotListener
             }
             if (value != null) {
-                gameList.value = value.toObjects(TicTacToeGame::class.java)
+                gameList.value = value.toObjects()
             }
         }
 
-    db.collection("Players")
+    db.collection("players")
         .addSnapshotListener { value, error ->
             if (error != null) {
                 return@addSnapshotListener
             }
             if (value != null) {
-                playerList.value = value.toObjects(Player::class.java)
+                playerList.value = value.toObjects()
+
             }
         }
 
@@ -197,48 +203,82 @@ fun MainMenu(navController: NavController) {
                 .padding(16.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
-//            Text(
-//                text = "Welcome to Tic Tac Toe!",
-//                style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
-//                modifier = Modifier.padding(bottom = 16.dp)
-//            )
-//            Spacer(modifier = Modifier.height(16.dp))
-//            Button(
-//                onClick = { navController.navigate("game") },
-//                modifier = Modifier.fillMaxWidth()
-//            ) {
-//                Text("Start Game")
-//            }
-            item{
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Create Account",
-                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = { navController.navigate("create account") },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Create Account")
+            item {
+                Spacer(modifier = Modifier.height(120.dp))
+                if (player.value == null) {
+                    Button(
+                        onClick = { navController.navigate("create account") },
+                        modifier = Modifier.width(250.dp)
+                    ) {
+                        Text("Choose Name")
+                    }
+                } else {
+                    Text(
+                        text = "Welcome, ${player.value!!.name}!",
+                        style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            game.value = TicTacToeGame(
+                                board = listOf(0, 0, 0, 0, 0, 0, 0, 0, 0),
+                                id = db.collection("games").document().id,
+                                player1 = player.value!!.name,
+                                player2 = "",
+                                playerTurn = 1,
+                                winner = 0,
+                            )
+                            db.collection("games").document(game.value!!.id).set(game.value!!)
+                            navController.navigate("game")
+                        }
+                    ) {
+                        Text("Create Game")
+                    }
                 }
             }
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Games",
+                    text = "Players",
                     style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
-            items(games.value){ game ->
+            items(players.value) { availablePlayer ->
                 ListItem(
-                    headlineContent = { Text(game.player1 + " vs " + game.player2) }
+                    headlineContent = { Text(availablePlayer.name) }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-
+            }
+            item {
+                Text(
+                    text = "Games",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+            items(games.value) { games ->
+                if(games.player1.isNotEmpty() && games.player2.isNotEmpty()){
+                    ListItem(
+                        headlineContent = { Text(games.player1 + " vs " + games.player2) }
+                    )
+                }else{
+                    ListItem(
+                        headlineContent = { Text(games.player1 + " vs " + games.player2) }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            game.value = games
+                            db.collection("games").document(game.value!!.id).update("player2", player.value!!.name)
+                            navController.navigate("game")
+                        }, modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Join Game")
+                    }
+                }
             }
         }
     }
@@ -246,9 +286,20 @@ fun MainMenu(navController: NavController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GameScreen(navController: NavHostController, ticTacToeGame: MutableState<TicTacToeGame?>) {
-    val board = remember { mutableStateOf(List(3) { MutableList(3) { 0 } }) }
-    val playerTurn = remember { mutableIntStateOf(1) }
+fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGame?>, player: MutableState<Player?>) {
+    val db = Firebase.firestore
+    val gameState = remember { mutableStateOf(game.value) }
+
+    LaunchedEffect(key1 = gameState.value?.id){
+        db.collection("games").document(gameState.value!!.id).addSnapshotListener { value, error ->
+            if (error != null) {
+                return@addSnapshotListener
+            }
+            if (value != null && value.exists()) {
+                gameState.value = value.toObject(TicTacToeGame::class.java)
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -256,7 +307,7 @@ fun GameScreen(navController: NavHostController, ticTacToeGame: MutableState<Tic
             CenterAlignedTopAppBar(
                 title = { Text("Game Screen") },
                 actions = {
-                    IconButton(onClick = { navController.navigate("main menu") }){
+                    IconButton(onClick = { navController.navigate("main menu") }) {
                         Icon(Icons.Default.Close, contentDescription = "Back")
                     }
                 },
@@ -274,58 +325,63 @@ fun GameScreen(navController: NavHostController, ticTacToeGame: MutableState<Tic
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
-            Text(
-                text = "Player ${if (playerTurn.intValue == 1) "X" else "O"}'s turn"
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Column {
-                for (i in 0..2) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row {
-                        for (j in 0..2) {
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Button(onClick = {
-                                if (board.value[i][j] == 0) {
-                                    board.value[i][j] = playerTurn.intValue
+            if(gameState.value!!.player1.isNotEmpty() && gameState.value!!.player2.isNotEmpty()){
+                Text(
+                    text = gameState.value!!.player1 + " vs " + gameState.value!!.player2,
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Text(
+                    text = if (player.value!!.name == gameState.value!!.player1 && gameState.value!!.playerTurn == 1 || player.value!!.name == gameState.value!!.player2 && gameState.value!!.playerTurn == 2) "Your turn" else "Opponent's turn",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Column {
+                    for (i in 0..2) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row {
+                            for (j in 0..2) {
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Button(
+                                    onClick = {
+                                        if(player.value!!.name == gameState.value!!.player1 && gameState.value!!.playerTurn == 1 || player.value!!.name == gameState.value!!.player2 && gameState.value!!.playerTurn == 2){
+                                            if(gameState.value!!.board[i * 3 + j] == 0 && gameState.value!!.winner == 0){
+                                                gameState.value = gameState.value!!.copy(board = gameState.value!!.board.toMutableList().also { it[i * 3 + j] = if (gameState.value!!.playerTurn == 1) 1 else 2 })
+                                                gameState.value = gameState.value!!.copy(playerTurn = if (gameState.value!!.playerTurn == 1) 2 else 1)
+                                                gameState.value = gameState.value!!.copy(winner = checkWin(gameState.value!!.board))
+                                                db.collection("games").document(gameState.value!!.id).set(gameState.value!!)
+                                                if(gameState.value!!.winner != 0){
+                                                    navController.navigate("winner")
+                                                }
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Text(
+                                        text = if (gameState.value!!.board[i * 3 + j] == 1) "X" else if (gameState.value!!.board[i * 3 + j] == 2) "O" else "",
+                                    )
                                 }
-                                if (playerTurn.intValue == 1) {
-                                    playerTurn.intValue = 2
-                                } else {
-                                    playerTurn.intValue = 1
-                                }
-                                ticTacToeGame.value?.winner = checkWin(board.value)
-                                if (ticTacToeGame.value?.winner != 0) {
-                                    navController.navigate("winner")
-                                }
-                            })
-                            {
-                                Text(
-                                    text = if (board.value[i][j] == 1) "X" else if (board.value[i][j] == 2) "O" else ""
-                                )
                             }
                         }
                     }
                 }
+            }else{
+                Text(
+                    text = "Waiting for opponent...",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = {
-                if (playerTurn.intValue == 1) {
-                    playerTurn.intValue = 2
-                } else {
-                    playerTurn.intValue = 1
-                }
-            }) { Text("Make Move") }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WinnerScreen(navController: NavHostController, ticTacToeGame: MutableState<TicTacToeGame?>){
-    val winner = ticTacToeGame.value?.winner
-    navigateAfterDelay(2000) {
-        navController.navigate("main menu")
-    }
+fun WinnerScreen(navController: NavHostController, game: MutableState<TicTacToeGame?>, player: MutableState<Player?>){
+    val db = Firebase.firestore
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -351,43 +407,43 @@ fun WinnerScreen(navController: NavHostController, ticTacToeGame: MutableState<T
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
             Text(
-                text = if (winner == 1) "Player 1 wins!" else if (winner == 2) "Player 2 wins!" else "It's a draw!",
+                text = if (game.value!!.winner == 1) game.value!!.player1 + " wins!" else if (game.value!!.winner == 2) game.value!!.player2 + " wins!" else if (game.value!!.winner == 3) "It's a draw!" else "Erm???",
                 style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
         }
     }
+
+    delay(2000) {
+        db.collection("games").document(game.value!!.id).delete()
+        db.collection("players").document(player.value!!.id).delete()
+        navController.navigate("main menu")
+        game.value = TicTacToeGame(board = listOf(0, 0, 0, 0, 0, 0, 0, 0, 0), id = "", player1 = "", player2 = "", playerTurn = 1, winner = 0)
+    }
 }
 
-fun navigateAfterDelay(delay: Int, function: () -> Unit) {
+fun delay(delay: Int, function: () -> Unit) {
     android.os.Handler().postDelayed({
         function()
     }, delay.toLong())
 }
 
-fun checkWin(board: List<List<Int>>): Int {
-    for (i in 0..2) {
-        if (board[i][0] == board[i][1] && board[i][1] == board[i][2] && board[i][0] != 0) {
-            return board[i][0]
-        }
-        if (board[0][i] == board[1][i] && board[1][i] == board[2][i] && board[0][i] != 0) {
-            return board[0][i]
-        }
-    }
-    if (board[0][0] == board[1][1] && board[1][1] == board[2][2] && board[0][0] != 0) {
-        return board[0][0]
-    }
-    if (board[0][2] == board[1][1] && board[1][1] == board[2][0] && board[0][2] != 0) {
-        return board[0][2]
-    }
-    for (i in 0..2) {
-        for (j in 0..2) {
-            if (board[i][j] == 0) {
-                return 0
-            }
+fun checkWin(board: List<Int>): Int {
+    val rowColumnsAndDiagonals = listOf(
+        listOf(0, 1, 2), listOf(3, 4, 5), listOf(6, 7, 8),
+        listOf(0, 3, 6), listOf(1, 4, 7), listOf(2, 5, 8),
+        listOf(0, 4, 8), listOf(2, 4, 6)
+    )
+    for (i in rowColumnsAndDiagonals) {
+        val (a, b, c) = i
+        if (board[a] != 0 && board[a] == board[b] && board[a] == board[c]) {
+            return board[a]
         }
     }
-    return 3
+    if (board.all { it != 0 }) {
+        return 3
+    }
+    return 0
 }
 
 @Preview(showBackground = true)

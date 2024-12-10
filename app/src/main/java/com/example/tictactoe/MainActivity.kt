@@ -1,9 +1,8 @@
-@file:Suppress("DEPRECATION")
+
 
 package com.example.tictactoe
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -86,7 +85,7 @@ fun TicTacToeApp(){
         composable("main menu") { MainMenu(navController, player, game) }
         composable("create account") { CreateAccountScreen(navController, player) }
         composable("game") { GameScreen(navController, game, player) }
-        composable("winner") { WinnerScreen(navController, game, player) }
+        composable("winner") { WinnerScreen(navController, game) }
     }
 }
 
@@ -212,13 +211,13 @@ fun MainMenu(navController: NavController, player: MutableState<Player?>, game: 
                     ) {
                         Text("Choose Name")
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
                 } else {
                     Text(
                         text = "Welcome, ${player.value!!.name}!",
                         style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
                             game.value = TicTacToeGame(
@@ -235,23 +234,10 @@ fun MainMenu(navController: NavController, player: MutableState<Player?>, game: 
                     ) {
                         Text("Create Game")
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Players",
-                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-            items(players.value) { availablePlayer ->
-                ListItem(
-                    headlineContent = { Text(availablePlayer.name) }
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+
             item {
                 Text(
                     text = "Games",
@@ -280,6 +266,21 @@ fun MainMenu(navController: NavController, player: MutableState<Player?>, game: 
                     }
                 }
             }
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Players",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            items(players.value) { availablePlayer ->
+                ListItem(
+                    headlineContent = { Text(availablePlayer.name) }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }
@@ -288,15 +289,17 @@ fun MainMenu(navController: NavController, player: MutableState<Player?>, game: 
 @Composable
 fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGame?>, player: MutableState<Player?>) {
     val db = Firebase.firestore
-    val gameState = remember { mutableStateOf(game.value) }
 
-    LaunchedEffect(key1 = gameState.value?.id){
-        db.collection("games").document(gameState.value!!.id).addSnapshotListener { value, error ->
+    LaunchedEffect(key1 = game.value?.id){
+        db.collection("games").document(game.value!!.id).addSnapshotListener { value, error ->
             if (error != null) {
                 return@addSnapshotListener
             }
             if (value != null && value.exists()) {
-                gameState.value = value.toObject(TicTacToeGame::class.java)
+                game.value = value.toObject(TicTacToeGame::class.java)
+                if(game.value!!.winner != 0){
+                    navController.navigate("winner")
+                }
             }
         }
     }
@@ -307,7 +310,11 @@ fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGam
             CenterAlignedTopAppBar(
                 title = { Text("Game Screen") },
                 actions = {
-                    IconButton(onClick = { navController.navigate("main menu") }) {
+                    IconButton(onClick = {
+                        if(player.value!!.name == game.value!!.player1){
+                            db.collection("games").document(game.value!!.id).update("winner", 2)
+                        }else db.collection("games").document(game.value!!.id).update("winner", 1)
+                    }) {
                         Icon(Icons.Default.Close, contentDescription = "Back")
                     }
                 },
@@ -325,14 +332,14 @@ fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGam
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
-            if(gameState.value!!.player1.isNotEmpty() && gameState.value!!.player2.isNotEmpty()){
+            if(game.value!!.player1.isNotEmpty() && game.value!!.player2.isNotEmpty()){
                 Text(
-                    text = gameState.value!!.player1 + " vs " + gameState.value!!.player2,
+                    text = if (player.value!!.name == game.value!!.player1) player.value!!.name + " vs " + game.value!!.player2 else player.value!!.name + " vs " + game.value!!.player1,
                     style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 Text(
-                    text = if (player.value!!.name == gameState.value!!.player1 && gameState.value!!.playerTurn == 1 || player.value!!.name == gameState.value!!.player2 && gameState.value!!.playerTurn == 2) "Your turn" else "Opponent's turn",
+                    text = if (player.value!!.name == game.value!!.player1 && game.value!!.playerTurn == 1 || player.value!!.name == game.value!!.player2 && game.value!!.playerTurn == 2) "Your turn" else "Opponent's turn",
                     style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -345,13 +352,13 @@ fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGam
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Button(
                                     onClick = {
-                                        if(player.value!!.name == gameState.value!!.player1 && gameState.value!!.playerTurn == 1 || player.value!!.name == gameState.value!!.player2 && gameState.value!!.playerTurn == 2){
-                                            if(gameState.value!!.board[i * 3 + j] == 0 && gameState.value!!.winner == 0){
-                                                gameState.value = gameState.value!!.copy(board = gameState.value!!.board.toMutableList().also { it[i * 3 + j] = if (gameState.value!!.playerTurn == 1) 1 else 2 })
-                                                gameState.value = gameState.value!!.copy(playerTurn = if (gameState.value!!.playerTurn == 1) 2 else 1)
-                                                gameState.value = gameState.value!!.copy(winner = checkWin(gameState.value!!.board))
-                                                db.collection("games").document(gameState.value!!.id).set(gameState.value!!)
-                                                if(gameState.value!!.winner != 0){
+                                        if(player.value!!.name == game.value!!.player1 && game.value!!.playerTurn == 1 || player.value!!.name == game.value!!.player2 && game.value!!.playerTurn == 2){
+                                            if(game.value!!.board[i * 3 + j] == 0 && game.value!!.winner == 0){
+                                                game.value = game.value!!.copy(board = game.value!!.board.toMutableList().also { it[i * 3 + j] = if (game.value!!.playerTurn == 1) 1 else 2 })
+                                                game.value = game.value!!.copy(playerTurn = if (game.value!!.playerTurn == 1) 2 else 1)
+                                                game.value = game.value!!.copy(winner = checkWin(game.value!!.board))
+                                                db.collection("games").document(game.value!!.id).set(game.value!!)
+                                                if(game.value!!.winner != 0){
                                                     navController.navigate("winner")
                                                 }
                                             }
@@ -359,7 +366,7 @@ fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGam
                                     }
                                 ) {
                                     Text(
-                                        text = if (gameState.value!!.board[i * 3 + j] == 1) "X" else if (gameState.value!!.board[i * 3 + j] == 2) "O" else "",
+                                        text = if (game.value!!.board[i * 3 + j] == 1) "X" else if (game.value!!.board[i * 3 + j] == 2) "O" else "",
                                     )
                                 }
                             }
@@ -379,7 +386,7 @@ fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGam
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WinnerScreen(navController: NavHostController, game: MutableState<TicTacToeGame?>, player: MutableState<Player?>){
+fun WinnerScreen(navController: NavHostController, game: MutableState<TicTacToeGame?>){
     val db = Firebase.firestore
 
     Scaffold(
@@ -388,7 +395,10 @@ fun WinnerScreen(navController: NavHostController, game: MutableState<TicTacToeG
             CenterAlignedTopAppBar(
                 title = { Text("WINNER") },
                 actions = {
-                    IconButton(onClick = { navController.navigate("main menu") }){
+                    IconButton(onClick = {
+                        db.collection("games").document(game.value!!.id).delete()
+                        navController.navigate("main menu")
+                    }){
                         Icon(Icons.Default.Close, contentDescription = "Back")
                     }
                 },
@@ -411,21 +421,13 @@ fun WinnerScreen(navController: NavHostController, game: MutableState<TicTacToeG
                 style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+            Button(onClick = {
+                db.collection("games").document(game.value!!.id).delete()
+                navController.navigate("main menu") }) {
+                Text("Back to main menu")
+            }
         }
     }
-
-    delay(2000) {
-        db.collection("games").document(game.value!!.id).delete()
-        db.collection("players").document(player.value!!.id).delete()
-        navController.navigate("main menu")
-        game.value = TicTacToeGame(board = listOf(0, 0, 0, 0, 0, 0, 0, 0, 0), id = "", player1 = "", player2 = "", playerTurn = 1, winner = 0)
-    }
-}
-
-fun delay(delay: Int, function: () -> Unit) {
-    android.os.Handler().postDelayed({
-        function()
-    }, delay.toLong())
 }
 
 fun checkWin(board: List<Int>): Int {

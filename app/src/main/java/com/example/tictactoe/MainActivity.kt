@@ -311,9 +311,14 @@ fun GameScreen(navController: NavHostController, game: MutableState<TicTacToeGam
                 title = { Text("Game Screen") },
                 actions = {
                     IconButton(onClick = {
-                        if(player.value!!.name == game.value!!.player1){
-                            db.collection("games").document(game.value!!.id).update("winner", 2)
-                        }else db.collection("games").document(game.value!!.id).update("winner", 1)
+                        if(game.value!!.player1.isNotEmpty() && game.value!!.player2.isNotEmpty()){
+                            if(player.value!!.name == game.value!!.player1){
+                                db.collection("games").document(game.value!!.id).update("winner", 2)
+                            }else db.collection("games").document(game.value!!.id).update("winner", 1)
+                        }else{
+                            db.collection("games").document(game.value!!.id).delete()
+                            navController.navigate("main menu")
+                        }
                     }) {
                         Icon(Icons.Default.Close, contentDescription = "Back")
                     }
